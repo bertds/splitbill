@@ -2,25 +2,30 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, Loader2, AlertCircle } from 'lucide-react';
+import { Upload, Loader2, AlertCircle, Settings, GitCompare } from 'lucide-react';
 import clsx from 'clsx';
 import type { OcrProvider } from '@/lib/types';
+import { SettingsModal, loadApiKeys } from './SettingsModal';
+import { OcrCompare } from './OcrCompare';
 
-const PROVIDERS: { value: OcrProvider; label: string; note: string; needsKey?: string }[] = [
-  { value: 'claude', label: 'Claude AI', note: 'Best quality', needsKey: 'ANTHROPIC_API_KEY' },
-  { value: 'gemini', label: 'Gemini AI', note: 'Great quality', needsKey: 'GOOGLE_API_KEY' },
-  { value: 'local', label: 'Local (Tesseract)', note: 'No API key needed, lower quality' },
+const PROVIDERS: { value: OcrProvider | 'openai'; label: string; note: string }[] = [
+  { value: 'claude', label: 'Claude', note: 'Best quality' },
+  { value: 'openai', label: 'GPT-4o', note: 'Great quality' },
+  { value: 'gemini', label: 'Gemini', note: 'Great quality' },
+  { value: 'local', label: 'Tesseract', note: 'No API key' },
 ];
 
 export function UploadForm() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [provider, setProvider] = useState<OcrProvider>('claude');
+  const [provider, setProvider] = useState<OcrProvider | 'openai'>('claude');
   const [isDragOver, setIsDragOver] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [compareMode, setCompareMode] = useState(false);
 
   const handleFile = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -29,8 +34,7 @@ export function UploadForm() {
     }
     setSelectedFile(file);
     setError(null);
-    const url = URL.createObjectURL(file);
-    setPreview(url);
+    setPreview(URL.createObjectURL(file));
   }, []);
 
   const handleDrop = useCallback(
@@ -43,31 +47,84 @@ export function UploadForm() {
     [handleFile]
   );
 
-  const handleSubmit = async () => {
-    if (!selectedFile) return;
+  const createSession = async (
+    file: File | null,
+    chosenProvider: string,
+    preItems?: { name: string; price: number }[],
+    restaurantName?: string | null,
+    currency?: string,
+    total?: number | null
+  ) => {
     setLoading(true);
     setError(null);
 
     try {
       const formData = new FormData();
-      formData.append('image', selectedFile);
-      formData.append('provider', provider);
+      if (file) formData.append('image', file);
+      formData.append('provider', chosenProvider);
+      if (restaurantName) formData.append('restaurant_name', restaurantName);
+      if (currency) formData.append('currency', currency);
+      if (total != null) formData.append('total', String(total));
+      if (preItems) formData.append('items', JSON.stringify(preItems));
 
-      const res = await fetch('/api/sessions', { method: 'POST', body: formData });
+      const keys = loadApiKeys();
+      const headers: Record<string, string> = {};
+      if (keys.anthropic) headers['x-anthropic-key'] = keys.anthropic;
+      if (keys.google) headers['x-google-key'] = keys.google;
+      if (keys.openai) headers['x-openai-key'] = keys.openai;
+
+      const res = await fetch('/api/sessions', { method: 'POST', headers, body: formData });
       const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error || 'Failed to analyze bill');
+      if (!res.ok) throw new Error(data.error || 'Failed to create session');
 
       localStorage.setItem(`coordinator_${data.sessionId}`, 'true');
       router.push(`/session/${data.sessionId}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
+      setError(e instanceof Error ? e.message : 'Something went wrong.');
       setLoading(false);
     }
   };
 
+  const handleSubmit = () => {
+    if (!selectedFile) return;
+    createSession(selectedFile, provider);
+  };
+
+  const handleCompareSelect = (
+    items: { name: string; price: number }[],
+    currency: string,
+    restaurantName: string | null,
+    total: number | null
+  ) => {
+    setCompareMode(false);
+    createSession(null, 'local', items, restaurantName, currency, total);
+  };
+
+  if (compareMode && selectedFile) {
+    return (
+      <OcrCompare
+        file={selectedFile}
+        onSelect={handleCompareSelect}
+        onCancel={() => setCompareMode(false)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+
+      {/* Top row: settings button */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowSettings(true)}
+          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-colors"
+        >
+          <Settings className="w-3.5 h-3.5" />
+          API Keys
+        </button>
+      </div>
+
       {/* Drop zone */}
       <div
         onClick={() => !loading && inputRef.current?.click()}
@@ -110,20 +167,20 @@ export function UploadForm() {
       {/* Provider selector */}
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">OCR method</p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-4 gap-1.5">
           {PROVIDERS.map((p) => (
             <button
               key={p.value}
               onClick={() => setProvider(p.value)}
               className={clsx(
-                'flex flex-col items-center px-2 py-2.5 rounded-xl border text-center transition-colors',
+                'flex flex-col items-center px-1 py-2 rounded-xl border text-center transition-colors',
                 provider === p.value
                   ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
                   : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
               )}
             >
               <span className="text-xs font-semibold">{p.label}</span>
-              <span className="text-[10px] mt-0.5 opacity-70">{p.note}</span>
+              <span className="text-[10px] mt-0.5 opacity-70 leading-tight">{p.note}</span>
             </button>
           ))}
         </div>
@@ -136,20 +193,32 @@ export function UploadForm() {
         </div>
       )}
 
-      <button
-        onClick={handleSubmit}
-        disabled={!selectedFile || loading}
-        className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-semibold text-base hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        {loading ? (
-          <span className="flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Analyzing bill…
-          </span>
-        ) : (
-          'Analyze & Create Split'
-        )}
-      </button>
+      {/* Action buttons */}
+      <div className="flex gap-2">
+        <button
+          onClick={handleSubmit}
+          disabled={!selectedFile || loading}
+          className="flex-1 bg-indigo-600 text-white py-3.5 rounded-xl font-semibold text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Analyzing…
+            </span>
+          ) : (
+            'Analyze & Split'
+          )}
+        </button>
+        <button
+          onClick={() => selectedFile && setCompareMode(true)}
+          disabled={!selectedFile || loading}
+          title="Compare all providers side-by-side"
+          className="flex items-center gap-1.5 px-3.5 py-3.5 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 rounded-xl text-sm font-medium transition-colors"
+        >
+          <GitCompare className="w-4 h-4" />
+          Compare
+        </button>
+      </div>
     </div>
   );
 }
