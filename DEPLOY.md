@@ -38,29 +38,58 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 ANTHROPIC_API_KEY=sk-ant-...   # at least one OCR key
 ```
 
-## 3. Open firewall ports
-
-```bash
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw allow 443/udp   # HTTP/3
-```
-
-## 4. Build and start
+## 3. Build and start
 
 ```bash
 docker compose up -d --build
 ```
 
-This will:
-- Build the Next.js app (takes ~2 min on first run)
-- Start Caddy, which automatically provisions a Let's Encrypt TLS cert
-- Expose the app at `https://bill.yourdomain.com`
+The app is now reachable on **port 3000** (`http://your-server-ip:3000`).
 
 Check logs:
 ```bash
 docker compose logs -f
 ```
+
+## 4. HTTPS via nginx (required for camera on Android)
+
+Camera capture and the Web Share API require HTTPS. If nginx is already
+running on your server, add a new site config:
+
+```bash
+# Install certbot if not already present
+apt install -y certbot python3-certbot-nginx
+
+# Create the site config
+nano /etc/nginx/sites-available/splitbill
+```
+
+Paste:
+```nginx
+server {
+    server_name bill.yourdomain.com;
+
+    location / {
+        proxy_pass         http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection 'upgrade';
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+Enable and get a cert:
+```bash
+ln -s /etc/nginx/sites-available/splitbill /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
+certbot --nginx -d bill.yourdomain.com
+```
+
+Certbot rewrites the config to add HTTPS automatically.
+App will be at **`https://bill.yourdomain.com`**.
 
 ## 5. Updating to a new version
 
@@ -68,8 +97,6 @@ docker compose logs -f
 git pull
 docker compose up -d --build
 ```
-
-Docker Compose will rebuild only the app container and restart it with zero downtime on the Caddy side.
 
 ---
 
