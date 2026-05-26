@@ -64,11 +64,21 @@ export function OcrCompare({ file, onSelect, onCancel }: Props) {
         if (keys.openai) headers['x-openai-key'] = keys.openai;
 
         const res = await fetch('/api/ocr-test', { method: 'POST', headers, body: formData });
-        const data = await res.json();
         const durationMs = Date.now() - start;
 
+        let data: Record<string, unknown>;
+        try {
+          data = await res.json();
+        } catch {
+          // Server returned non-JSON (e.g. Caddy timeout / HTML error page)
+          setResults((prev) => prev.map((r, j) =>
+            j === i ? { ...r, status: 'error', error: `HTTP ${res.status} — gateway timeout or server error (check Caddy read_timeout)`, durationMs } : r
+          ));
+          return;
+        }
+
         if (!res.ok || data.error) {
-          setResults((prev) => prev.map((r, j) => j === i ? { ...r, status: 'error', error: data.error, durationMs } : r));
+          setResults((prev) => prev.map((r, j) => j === i ? { ...r, status: 'error', error: data.error as string, durationMs } : r));
         } else {
           setResults((prev) => prev.map((r, j) => j === i ? { ...r, status: 'done', ...data, durationMs } : r));
         }
