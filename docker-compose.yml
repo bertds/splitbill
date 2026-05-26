@@ -14,3 +14,11 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    networks:
+      - default
+      - caddy_net
+
+networks:
+  caddy_net:
+    external: true
+    name: ${CADDY_NETWORK:-ccstudios-stack_default}
