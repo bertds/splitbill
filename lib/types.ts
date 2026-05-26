@@ -57,4 +57,4 @@ export interface CalculationResult {
   total: number;
 }
 
-export type OcrProvider = 'claude' | 'gemini' | 'local';
+export type OcrProvider = 'claude' | 'gemini' | 'local' | 'openai';

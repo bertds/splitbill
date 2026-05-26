@@ -14,6 +14,12 @@ export async function parseBill(
       const { parseWithGemini } = await import('./gemini');
       return parseWithGemini(base64, mimeType);
     }
+    case 'openai': {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) throw new Error('No OpenAI API key configured');
+      const { parseWithOpenAI } = await import('./openai');
+      return parseWithOpenAI(base64, mimeType, apiKey);
+    }
     case 'local': {
       const { parseWithLocal } = await import('./local');
       return parseWithLocal(base64);
