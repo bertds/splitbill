@@ -51,44 +51,27 @@ Check logs:
 docker compose logs -f
 ```
 
-## 4. HTTPS via nginx (required for camera on Android)
+## 4. HTTPS via existing Caddy (required for camera on Android)
 
-Camera capture and the Web Share API require HTTPS. If nginx is already
-running on your server, add a new site config:
+Camera capture and the Web Share API require HTTPS. If Caddy is already
+running on your server as a reverse proxy, just add a new site block to
+your existing Caddyfile (usually `/etc/caddy/Caddyfile`):
 
-```bash
-# Install certbot if not already present
-apt install -y certbot python3-certbot-nginx
-
-# Create the site config
-nano /etc/nginx/sites-available/splitbill
-```
-
-Paste:
-```nginx
-server {
-    server_name bill.yourdomain.com;
-
-    location / {
-        proxy_pass         http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header   Upgrade $http_upgrade;
-        proxy_set_header   Connection 'upgrade';
-        proxy_set_header   Host $host;
-        proxy_set_header   X-Real-IP $remote_addr;
-        proxy_cache_bypass $http_upgrade;
-    }
+```caddy
+bill.yourdomain.com {
+    reverse_proxy localhost:3000
 }
 ```
 
-Enable and get a cert:
+Then reload Caddy — it will auto-provision a Let's Encrypt cert for the
+new domain:
+
 ```bash
-ln -s /etc/nginx/sites-available/splitbill /etc/nginx/sites-enabled/
-nginx -t && systemctl reload nginx
-certbot --nginx -d bill.yourdomain.com
+caddy reload --config /etc/caddy/Caddyfile
+# or if running as a systemd service:
+systemctl reload caddy
 ```
 
-Certbot rewrites the config to add HTTPS automatically.
 App will be at **`https://bill.yourdomain.com`**.
 
 ## 5. Updating to a new version
