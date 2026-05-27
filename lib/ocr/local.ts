@@ -1,15 +1,44 @@
+import path from 'path';
 import type { ParsedBill } from '../types';
+
+// Use tessdata bundled in the image (see Dockerfile), fall back to CDN
+const TESSDATA_DIR =
+  process.env.TESSDATA_PATH ?? path.join(process.cwd(), 'tessdata');
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms)
+    ),
+  ]);
+}
 
 export async function parseWithLocal(base64: string): Promise<ParsedBill> {
   const { createWorker } = await import('tesseract.js');
-  const worker = await createWorker('eng', 1, { logger: () => {} });
+
+  const worker = await withTimeout(
+    createWorker('eng', 1, {
+      logger: () => {},
+      langPath: TESSDATA_DIR,
+      cachePath: '/tmp/tessdata',
+    }),
+    60_000,
+    'Tesseract worker init'
+  );
 
   try {
     const imageBuffer = Buffer.from(base64, 'base64');
-    const { data: { text } } = await worker.recognize(imageBuffer);
+    const {
+      data: { text },
+    } = await withTimeout(
+      worker.recognize(imageBuffer),
+      60_000,
+      'Tesseract recognition'
+    );
     return parseReceiptText(text);
   } finally {
-    await worker.terminate();
+    await worker.terminate().catch(() => {});
   }
 }
 
@@ -19,7 +48,8 @@ function parseReceiptText(text: string): ParsedBill {
 
   // Match lines like: "1 Lasagne 15.50" or "Lasagne 15,50" or "LASAGNE 15.50"
   const pricePattern = /^(\d+)?\s*(.{2,40}?)\s{2,}(\d+[.,]\d{2})\s*$/;
-  const skipPattern = /total|totale|subtotal|tax|iva|service|coperto|sconto|discount|tip/i;
+  const skipPattern =
+    /total|totale|subtotal|tax|iva|service|coperto|sconto|discount|tip/i;
 
   for (const line of lines) {
     if (skipPattern.test(line)) continue;

@@ -74,7 +74,17 @@ export function UploadForm() {
       if (keys.openai) headers['x-openai-key'] = keys.openai;
 
       const res = await fetch('/api/sessions', { method: 'POST', headers, body: formData });
-      const data = await res.json();
+      const raw = await res.text();
+      let data: { sessionId?: string; error?: string };
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        // Empty or non-JSON body = server crashed (e.g. Tesseract OOM / timeout)
+        throw new Error(
+          'The server returned no response — Tesseract may have crashed or timed out. ' +
+          'Try Claude, GPT-4o or Gemini instead.'
+        );
+      }
       if (!res.ok) throw new Error(data.error || 'Failed to create session');
 
       localStorage.setItem(`coordinator_${data.sessionId}`, 'true');
@@ -141,7 +151,6 @@ export function UploadForm() {
           ref={inputRef}
           type="file"
           accept="image/*"
-          capture="environment"
           className="hidden"
           onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
         />
