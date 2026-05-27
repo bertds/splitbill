@@ -25,10 +25,20 @@ export function ItemRow({
   onSharedChange,
 }: Props) {
   const isClaimed = claims.some((c) => c.participant_id === participantId && c.item_id === item.id);
-  const claimants = claims
+
+  // Who else has claimed this specific item (excluding me)?
+  const otherClaimants = claims
+    .filter((c) => c.item_id === item.id && c.participant_id !== participantId)
+    .map((c) => participants.find((p) => p.id === c.participant_id)?.name)
+    .filter(Boolean) as string[];
+
+  const allClaimants = claims
     .filter((c) => c.item_id === item.id)
     .map((c) => participants.find((p) => p.id === c.participant_id)?.name)
-    .filter(Boolean);
+    .filter(Boolean) as string[];
+
+  // Exclusive claiming: if someone else claimed this item and I haven't, lock it
+  const lockedByOther = !item.shared && otherClaimants.length > 0 && !isClaimed;
 
   const fmt = (n: number) =>
     new Intl.NumberFormat('nl-NL', { style: 'currency', currency }).format(n);
@@ -39,6 +49,8 @@ export function ItemRow({
         'flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors',
         item.shared
           ? 'bg-amber-50 border-amber-200'
+          : lockedByOther
+          ? 'bg-gray-50 border-gray-100'
           : isClaimed
           ? 'bg-green-50 border-green-200'
           : 'bg-white border-gray-200'
@@ -49,20 +61,31 @@ export function ItemRow({
         <input
           type="checkbox"
           checked={isClaimed}
-          disabled={!participantId}
+          disabled={!participantId || lockedByOther}
           onChange={(e) => onClaimChange(item.id, e.target.checked)}
-          className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer flex-shrink-0"
+          className={clsx(
+            'w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0',
+            lockedByOther ? 'cursor-not-allowed opacity-30' : 'cursor-pointer'
+          )}
         />
       )}
       {item.shared && <div className="w-5 flex-shrink-0" />}
 
       {/* Name + claimants */}
       <div className="flex-1 min-w-0">
-        <span className={clsx('text-sm font-medium', item.shared ? 'text-amber-800' : 'text-gray-900')}>
+        <span className={clsx(
+          'text-sm font-medium',
+          item.shared ? 'text-amber-800' : lockedByOther ? 'text-gray-400' : 'text-gray-900'
+        )}>
           {item.name}
         </span>
-        {claimants.length > 0 && !item.shared && (
-          <p className="text-xs text-gray-500 mt-0.5 truncate">{claimants.join(', ')}</p>
+        {allClaimants.length > 0 && !item.shared && (
+          <p className={clsx(
+            'text-xs mt-0.5 truncate',
+            lockedByOther ? 'text-gray-400' : 'text-gray-500'
+          )}>
+            {allClaimants.join(', ')}
+          </p>
         )}
         {item.shared && (
           <p className="text-xs text-amber-600 mt-0.5">Shared — split equally</p>
@@ -70,11 +93,14 @@ export function ItemRow({
       </div>
 
       {/* Price */}
-      <span className={clsx('text-sm font-semibold tabular-nums flex-shrink-0', item.shared ? 'text-amber-700' : 'text-gray-900')}>
+      <span className={clsx(
+        'text-sm font-semibold tabular-nums flex-shrink-0',
+        item.shared ? 'text-amber-700' : lockedByOther ? 'text-gray-400' : 'text-gray-900'
+      )}>
         {fmt(item.price)}
       </span>
 
-      {/* Shared toggle */}
+      {/* Shared toggle — only show for non-locked items or coordinator */}
       <button
         onClick={() => onSharedChange(item.id, !item.shared)}
         title={item.shared ? 'Remove from shared' : 'Mark as shared by all'}
@@ -82,6 +108,8 @@ export function ItemRow({
           'flex-shrink-0 p-1.5 rounded-lg transition-colors',
           item.shared
             ? 'bg-amber-200 text-amber-700 hover:bg-amber-300'
+            : lockedByOther
+            ? 'text-gray-200 hover:text-gray-400 hover:bg-gray-100'
             : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
         )}
       >

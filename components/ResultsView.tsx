@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle, Receipt, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlertCircle, CheckCircle, Receipt, RefreshCw, X, ZoomIn, ZoomOut } from 'lucide-react';
 import clsx from 'clsx';
 import type { CalculationResult } from '@/lib/types';
 import { ShareButton } from './ShareButton';
@@ -12,6 +12,8 @@ interface Props {
   myParticipantId: string | null;
   sessionUrl: string;
   billImageUrl?: string | null;
+  isCoordinator?: boolean;
+  onReopen?: () => Promise<void>;
 }
 
 function BillViewer({ url, onClose }: { url: string; onClose: () => void }) {
@@ -119,13 +121,28 @@ function BillViewer({ url, onClose }: { url: string; onClose: () => void }) {
   );
 }
 
-export function ResultsView({ results, currency, myParticipantId, sessionUrl, billImageUrl }: Props) {
+export function ResultsView({ results, currency, myParticipantId, sessionUrl, billImageUrl, isCoordinator, onReopen }: Props) {
   const [showBill, setShowBill] = useState(false);
+  const [reopening, setReopening] = useState(false);
 
   const fmt = (n: number) =>
     new Intl.NumberFormat('nl-NL', { style: 'currency', currency }).format(n);
 
   const grandTotal = results.reduce((s, r) => s + r.total, 0);
+
+  // Detect if I joined AFTER the calculation (my participantId not in results)
+  const isLateJoiner = !!myParticipantId && !results.some((r) => r.participant_id === myParticipantId);
+
+  const handleReopen = async () => {
+    if (!onReopen) return;
+    if (!confirm('Reopen the session? The current results will be cleared and participants can adjust their claims.')) return;
+    setReopening(true);
+    try {
+      await onReopen();
+    } finally {
+      setReopening(false);
+    }
+  };
 
   return (
     <>
@@ -134,11 +151,39 @@ export function ResultsView({ results, currency, myParticipantId, sessionUrl, bi
       )}
 
       <div className="space-y-4">
-        <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
-          <CheckCircle className="w-5 h-5 flex-shrink-0" />
-          <span className="text-sm font-medium">Bill calculated! Share the results with your group.</span>
+        {/* Status banner */}
+        <div className="flex items-center justify-between gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2 text-green-700">
+            <CheckCircle className="w-5 h-5 flex-shrink-0" />
+            <span className="text-sm font-medium">Split calculated</span>
+          </div>
+          {isCoordinator && onReopen && (
+            <button
+              onClick={handleReopen}
+              disabled={reopening}
+              title="Clear results and reopen for claiming"
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-50 flex-shrink-0"
+            >
+              <RefreshCw className={clsx('w-3.5 h-3.5', reopening && 'animate-spin')} />
+              Reopen
+            </button>
+          )}
         </div>
 
+        {/* Late-joiner notice */}
+        {isLateJoiner && (
+          <div className="flex items-start gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <span className="text-sm">
+              You joined after the split was calculated — your items aren't included yet.
+              {isCoordinator
+                ? ' Use "Reopen" to let everyone reclaim and recalculate.'
+                : ' Ask the coordinator to reopen the session.'}
+            </span>
+          </div>
+        )}
+
+        {/* Share + view bill */}
         <div className="flex gap-2">
           <div className="flex-1">
             <ShareButton url={sessionUrl} label="Share results via WhatsApp" />

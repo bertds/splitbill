@@ -158,6 +158,14 @@ export function SessionClient({ sessionId }: Props) {
     router.push('/');
   };
 
+  const handleReopen = async () => {
+    const res = await fetch(`/api/sessions/${sessionId}/reopen`, { method: 'POST' });
+    if (res.ok) {
+      setResults(null);
+      setSession((s) => s ? { ...s, status: 'open' } : null);
+    }
+  };
+
   const sessionUrl = typeof window !== 'undefined' ? window.location.href : '';
   const currency = session?.currency || 'EUR';
   const isOpen = session?.status === 'open';
@@ -224,13 +232,27 @@ export function SessionClient({ sessionId }: Props) {
 
       {/* Calculated → show results to everyone */}
       {session.status === 'calculated' && results ? (
-        <ResultsView
-          results={results}
-          currency={currency}
-          myParticipantId={participantId}
-          sessionUrl={sessionUrl}
-          billImageUrl={session.bill_image_url}
-        />
+        <>
+          {/* Allow late-comers to join even after calculation */}
+          {!hasJoined && (
+            <button
+              onClick={() => setShowJoin(true)}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white py-4 rounded-2xl font-semibold text-base shadow-lg transition-colors mb-5"
+            >
+              <UserPlus className="w-5 h-5" />
+              Join to see your share
+            </button>
+          )}
+          <ResultsView
+            results={results}
+            currency={currency}
+            myParticipantId={participantId}
+            sessionUrl={sessionUrl}
+            billImageUrl={session.bill_image_url}
+            isCoordinator={isCoordinator}
+            onReopen={isCoordinator ? handleReopen : undefined}
+          />
+        </>
       ) : (
         <>
           {/* Guest join banner — always visible at top before the list */}
