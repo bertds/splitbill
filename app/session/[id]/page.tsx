@@ -41,7 +41,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       : 'Open the link to join the bill split';
   }
 
-  const imageUrl = `/api/og/${params.id}`;
+  // OG image must be an absolute URL so WhatsApp/Telegram scrapers can fetch it
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+    || (process.env.DOMAIN ? `https://${process.env.DOMAIN}` : 'https://bill.ccstudios.be');
+  const imageUrl = `${baseUrl}/api/og/${params.id}`;
 
   return {
     title,
