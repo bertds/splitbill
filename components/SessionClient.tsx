@@ -41,6 +41,7 @@ export function SessionClient({ sessionId }: Props) {
         setItems(data.items);
         setParticipants(data.participants);
         setClaims(data.claims);
+        if (data.results) setResults(data.results);
         sessionItemIds.current = new Set(data.items.map((i: SessionItem) => i.id));
         if (!stored) setShowJoin(true);
       })

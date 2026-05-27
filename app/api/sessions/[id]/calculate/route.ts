@@ -27,6 +27,8 @@ export async function POST(
   const results = calculateSplit(items ?? [], participants ?? [], claims ?? []);
 
   if (results.length > 0) {
+    // Delete any previous results before inserting fresh ones
+    await supabase.from('results').delete().eq('session_id', params.id);
     await supabase.from('results').insert(
       results.map((r) => ({
         session_id: params.id,

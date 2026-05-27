@@ -17,16 +17,33 @@ export async function GET(
     return NextResponse.json({ error: 'Session not found' }, { status: 404 });
   }
 
-  const [{ data: items }, { data: participants }, { data: claims }] = await Promise.all([
-    supabase.from('items').select('*').eq('session_id', params.id).order('name'),
-    supabase.from('participants').select('*').eq('session_id', params.id).order('created_at'),
-    supabase.from('item_claims').select('*').eq('session_id', params.id),
-  ]);
+  const [{ data: items }, { data: participants }, { data: claims }, { data: resultRows }] =
+    await Promise.all([
+      supabase.from('items').select('*').eq('session_id', params.id).order('name'),
+      supabase.from('participants').select('*').eq('session_id', params.id).order('created_at'),
+      supabase.from('item_claims').select('*').eq('session_id', params.id),
+      supabase.from('results').select('*').eq('session_id', params.id),
+    ]);
+
+  // Re-hydrate CalculationResult shape from stored rows
+  const participantMap = Object.fromEntries((participants ?? []).map((p) => [p.id, p.name]));
+  const results =
+    session.status === 'calculated' && resultRows?.length
+      ? resultRows.map((r) => ({
+          participant_id: r.participant_id,
+          name: participantMap[r.participant_id] ?? 'Unknown',
+          line_items: r.breakdown ?? [],
+          subtotal: r.subtotal,
+          shared_cost: r.shared_cost,
+          total: r.total,
+        }))
+      : null;
 
   return NextResponse.json({
     session,
     items: items ?? [],
     participants: participants ?? [],
     claims: claims ?? [],
+    results,
   });
 }
