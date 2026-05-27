@@ -1,6 +1,7 @@
 'use client';
 
-import { CheckCircle } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle, Receipt, X } from 'lucide-react';
 import clsx from 'clsx';
 import type { CalculationResult } from '@/lib/types';
 import { ShareButton } from './ShareButton';
@@ -10,9 +11,12 @@ interface Props {
   currency: string;
   myParticipantId: string | null;
   sessionUrl: string;
+  billImageUrl?: string | null;
 }
 
-export function ResultsView({ results, currency, myParticipantId, sessionUrl }: Props) {
+export function ResultsView({ results, currency, myParticipantId, sessionUrl, billImageUrl }: Props) {
+  const [showBill, setShowBill] = useState(false);
+
   const fmt = (n: number) =>
     new Intl.NumberFormat('nl-NL', { style: 'currency', currency }).format(n);
 
@@ -25,7 +29,20 @@ export function ResultsView({ results, currency, myParticipantId, sessionUrl }: 
         <span className="text-sm font-medium">Bill calculated! Share the results with your group.</span>
       </div>
 
-      <ShareButton url={sessionUrl} label="Share results via WhatsApp" />
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <ShareButton url={sessionUrl} label="Share results via WhatsApp" />
+        </div>
+        {billImageUrl && (
+          <button
+            onClick={() => setShowBill(true)}
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex-shrink-0"
+          >
+            <Receipt className="w-4 h-4" />
+            View bill
+          </button>
+        )}
+      </div>
 
       {results.map((r) => {
         const isMe = r.participant_id === myParticipantId;
@@ -74,6 +91,28 @@ export function ResultsView({ results, currency, myParticipantId, sessionUrl }: 
         <span>Grand total split</span>
         <span className="tabular-nums">{fmt(grandTotal)}</span>
       </div>
+
+      {/* Bill photo lightbox */}
+      {showBill && billImageUrl && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowBill(false)}
+        >
+          <div className="relative max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setShowBill(false)}
+              className="absolute -top-10 right-0 text-white/80 hover:text-white p-2"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img
+              src={billImageUrl}
+              alt="Original bill"
+              className="w-full rounded-xl max-h-[80vh] object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ export interface Session {
   restaurant_name: string | null;
   currency: string;
   total: number | null;
+  bill_image_url: string | null;
 }
 
 export interface SessionItem {

@@ -25,6 +25,9 @@ export async function POST(request: NextRequest) {
   if (openaiKey) process.env.OPENAI_API_KEY = openaiKey;
 
   let expandedItems: { name: string; price: number; shared: boolean }[];
+  let parsedRestaurantName = restaurantName;
+  let parsedCurrency = currency;
+  let parsedTotal = total;
 
   if (preItems) {
     // Items already parsed by the compare flow — just use them
@@ -55,16 +58,38 @@ export async function POST(request: NextRequest) {
         shared: false,
       }))
     );
+    parsedRestaurantName = parsed.restaurant_name;
+    parsedCurrency = parsed.currency || 'EUR';
+    parsedTotal = parsed.total;
   }
 
   const supabase = getSupabaseServer();
 
+  // Upload bill image to Supabase Storage
+  let billImageUrl: string | null = null;
+  if (file) {
+    try {
+      const ext = file.type.split('/')[1] || 'jpg';
+      const path = `${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from('bill-images')
+        .upload(path, await file.arrayBuffer(), { contentType: file.type, upsert: false });
+      if (!uploadError) {
+        const { data: urlData } = supabase.storage.from('bill-images').getPublicUrl(path);
+        billImageUrl = urlData.publicUrl;
+      }
+    } catch {
+      // Image upload is best-effort — don't fail the whole request
+    }
+  }
+
   const { data: session, error: sessionError } = await supabase
     .from('sessions')
     .insert({
-      restaurant_name: restaurantName || null,
-      currency,
-      total: total || null,
+      restaurant_name: parsedRestaurantName || null,
+      currency: parsedCurrency,
+      total: parsedTotal || null,
+      bill_image_url: billImageUrl,
     })
     .select()
     .single();

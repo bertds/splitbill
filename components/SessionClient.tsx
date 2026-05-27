@@ -170,7 +170,12 @@ export function SessionClient({ sessionId }: Props) {
   return (
     <>
       {showJoin && (
-        <JoinDialog sessionId={sessionId} restaurantName={session.restaurant_name} onJoin={handleJoin} />
+        <JoinDialog
+          sessionId={sessionId}
+          restaurantName={session.restaurant_name}
+          existingParticipants={participants}
+          onJoin={handleJoin}
+        />
       )}
 
       {/* Header */}
@@ -198,6 +203,7 @@ export function SessionClient({ sessionId }: Props) {
           currency={currency}
           myParticipantId={participantId}
           sessionUrl={sessionUrl}
+          billImageUrl={session.bill_image_url}
         />
       ) : (
         <>
