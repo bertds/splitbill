@@ -1,9 +1,9 @@
-import path from 'path';
+import fs from 'fs';
 import type { ParsedBill } from '../types';
 
-// Use tessdata bundled in the image (see Dockerfile), fall back to CDN
-const TESSDATA_DIR =
-  process.env.TESSDATA_PATH ?? path.join(process.cwd(), 'tessdata');
+// Tesseract will download eng.traineddata from jsdelivr CDN on first use
+// and cache it here for all subsequent requests within the same process.
+const CACHE_DIR = '/tmp/tessdata';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -17,13 +17,18 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 export async function parseWithLocal(base64: string): Promise<ParsedBill> {
   const { createWorker } = await import('tesseract.js');
 
+  // Ensure the cache dir is writable before the worker tries to write to it
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+
+  // Allow 90 s on first run (CDN download ~8 MB); subsequent calls hit the cache
   const worker = await withTimeout(
     createWorker('eng', 1, {
       logger: () => {},
-      langPath: TESSDATA_DIR,
-      cachePath: '/tmp/tessdata',
+      // Do NOT set langPath — let tesseract.js use its own CDN so the file
+      // format matches exactly what this version of the library expects.
+      cachePath: CACHE_DIR,
     }),
-    60_000,
+    90_000,
     'Tesseract worker init'
   );
 
