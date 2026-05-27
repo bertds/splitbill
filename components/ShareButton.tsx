@@ -14,8 +14,13 @@ export function ShareButton({ url, label = 'Share', text, variant = 'indigo' }: 
   const [copied, setCopied] = useState(false);
 
   const handleShare = async () => {
-    // Native share sheet (mobile: WhatsApp, Telegram, iMessage, etc.)
-    if (typeof navigator !== 'undefined' && navigator.share) {
+    // Only use the native share sheet on mobile devices.
+    // On desktop (Mac/Windows) navigator.share is sometimes available but
+    // its "Copy" action concatenates text + url, producing an unpasteable string.
+    const isMobile = typeof navigator !== 'undefined'
+      && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
+    if (isMobile && navigator.share) {
       try {
         await navigator.share({
           title: 'SplitBill',
@@ -28,7 +33,7 @@ export function ShareButton({ url, label = 'Share', text, variant = 'indigo' }: 
         if ((e as Error).name === 'AbortError') return;
       }
     }
-    // Desktop / unsupported browser fallback: copy link to clipboard
+    // Desktop fallback: copy only the URL to clipboard
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
