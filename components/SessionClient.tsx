@@ -233,6 +233,16 @@ export function SessionClient({ sessionId }: Props) {
         />
       ) : (
         <>
+          {/* Guest join banner — always visible at top before the list */}
+          {!hasJoined && (
+            <button
+              onClick={() => setShowJoin(true)}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white py-4 rounded-2xl font-semibold text-base shadow-lg transition-colors mb-5"
+            >
+              <UserPlus className="w-5 h-5" />
+              Join the split
+            </button>
+          )}
           {/* Participants */}
           <div className="mb-5">
             <div className="flex items-center gap-2 mb-2">
@@ -261,7 +271,7 @@ export function SessionClient({ sessionId }: Props) {
           )}
 
           {/* Items — visible to everyone, interactive only after joining */}
-          <div className="mb-6">
+          <div className={hasJoined ? 'mb-24' : 'mb-6'}>
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
               Items ({items.length})
             </h2>
@@ -277,34 +287,24 @@ export function SessionClient({ sessionId }: Props) {
             />
           </div>
 
-          {/* Sticky bottom bar */}
-          <div className="sticky bottom-4 flex flex-col gap-2">
-            {/* Guest: prominent join button */}
-            {!hasJoined && (
-              <button
-                onClick={() => setShowJoin(true)}
-                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-semibold text-base shadow-lg transition-colors"
-              >
-                <UserPlus className="w-5 h-5" />
-                Join the split
-              </button>
-            )}
-
-            {/* Participant or coordinator: calculate button */}
-            {hasJoined && (
-              <button
-                onClick={handleCalculate}
-                disabled={calculating || participants.length === 0}
-                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-semibold text-base shadow-lg transition-colors"
-              >
-                {calculating ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /> Calculating…</>
-                ) : (
-                  <><Calculator className="w-5 h-5" /> Calculate Split</>
-                )}
-              </button>
-            )}
-          </div>
+          {/* Fixed bottom bar — only shown for joined participants */}
+          {hasJoined && (
+            <div className="fixed bottom-0 left-0 right-0 z-10 px-4 pb-5 pt-3 bg-gradient-to-t from-gray-50 via-gray-50/95 to-transparent pointer-events-none">
+              <div className="max-w-lg mx-auto pointer-events-auto">
+                <button
+                  onClick={handleCalculate}
+                  disabled={calculating || participants.length === 0}
+                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-semibold text-base shadow-lg transition-colors"
+                >
+                  {calculating ? (
+                    <><Loader2 className="w-5 h-5 animate-spin" /> Calculating…</>
+                  ) : (
+                    <><Calculator className="w-5 h-5" /> Calculate Split</>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </>
