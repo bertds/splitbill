@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Calculator, Loader2, Users, Trash2, UserPlus } from 'lucide-react';
+import { Calculator, Check, Loader2, Users, Trash2, UserPlus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { JoinDialog } from './JoinDialog';
@@ -26,13 +26,14 @@ export function SessionClient({ sessionId }: Props) {
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [isCoordinator, setIsCoordinator] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   const sessionItemIds = useRef<Set<string>>(new Set());
 
-  // Load initial data — never auto-show join dialog; let the user choose
+  // Load initial data
   useEffect(() => {
     const stored = localStorage.getItem(`participant_${sessionId}`);
     setParticipantId(stored);
@@ -60,11 +61,14 @@ export function SessionClient({ sessionId }: Props) {
       .channel(`session:${sessionId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions', filter: `id=eq.${sessionId}` }, (p) => {
         setSession((s) => s ? { ...s, ...p.new } : null);
-        // If just calculated, reload results
         if ((p.new as Session).status === 'calculated') {
           fetch(`/api/sessions/${sessionId}`)
             .then((r) => r.json())
             .then((data) => { if (data.results) setResults(data.results); });
+        }
+        // When session is reopened, clear results
+        if ((p.new as Session).status === 'open') {
+          setResults(null);
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'items', filter: `session_id=eq.${sessionId}` }, (p) => {
@@ -135,6 +139,16 @@ export function SessionClient({ sessionId }: Props) {
     }
   };
 
+  // Only the coordinator can trigger calculation; shows a confirmation dialog first
+  const handleCalculateClick = () => {
+    if (!confirm(
+      'Calculate the split now?\n\n' +
+      'This will finalise the bill and everyone will see the results. ' +
+      'No more changes can be made until you reopen the session.'
+    )) return;
+    handleCalculate();
+  };
+
   const handleCalculate = async () => {
     setCalculating(true);
     try {
@@ -147,6 +161,13 @@ export function SessionClient({ sessionId }: Props) {
     } finally {
       setCalculating(false);
     }
+  };
+
+  const handleSave = () => {
+    // Claims are saved in real-time on every checkbox tap.
+    // This button just gives participants a clear "done" affordance.
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
   };
 
   const handleDelete = async () => {
@@ -255,7 +276,26 @@ export function SessionClient({ sessionId }: Props) {
         </>
       ) : (
         <>
-          {/* Guest join banner — always visible at top before the list */}
+          {/* Coordinator-only: Calculate Split at the top */}
+          {isCoordinator && isOpen && (
+            <div className="mb-5">
+              <button
+                onClick={handleCalculateClick}
+                disabled={calculating || participants.length === 0}
+                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3.5 rounded-2xl font-semibold text-base shadow-md transition-colors"
+              >
+                {calculating
+                  ? <><Loader2 className="w-5 h-5 animate-spin" /> Calculating…</>
+                  : <><Calculator className="w-5 h-5" /> Calculate Split</>
+                }
+              </button>
+              <p className="text-xs text-center text-gray-400 mt-1.5">
+                Only you (coordinator) can finalise the split
+              </p>
+            </div>
+          )}
+
+          {/* Guest join banner */}
           {!hasJoined && (
             <button
               onClick={() => setShowJoin(true)}
@@ -265,6 +305,7 @@ export function SessionClient({ sessionId }: Props) {
               Join the split
             </button>
           )}
+
           {/* Participants */}
           <div className="mb-5">
             <div className="flex items-center gap-2 mb-2">
@@ -292,7 +333,7 @@ export function SessionClient({ sessionId }: Props) {
             </div>
           )}
 
-          {/* Items — visible to everyone, interactive only after joining */}
+          {/* Items list */}
           <div className={hasJoined ? 'mb-24' : 'mb-6'}>
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
               Items ({items.length})
@@ -309,20 +350,18 @@ export function SessionClient({ sessionId }: Props) {
             />
           </div>
 
-          {/* Fixed bottom bar — only shown for joined participants */}
+          {/* Fixed bottom bar — "Save my choices" for joined participants */}
           {hasJoined && (
             <div className="fixed bottom-0 left-0 right-0 z-10 px-4 pb-5 pt-3 bg-gradient-to-t from-gray-50 via-gray-50/95 to-transparent pointer-events-none">
               <div className="max-w-lg mx-auto pointer-events-auto">
                 <button
-                  onClick={handleCalculate}
-                  disabled={calculating || participants.length === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-semibold text-base shadow-lg transition-colors"
+                  onClick={handleSave}
+                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white py-4 rounded-2xl font-semibold text-base shadow-lg transition-colors"
                 >
-                  {calculating ? (
-                    <><Loader2 className="w-5 h-5 animate-spin" /> Calculating…</>
-                  ) : (
-                    <><Calculator className="w-5 h-5" /> Calculate Split</>
-                  )}
+                  {saved
+                    ? <><Check className="w-5 h-5" /> Choices saved!</>
+                    : 'Save my choices'
+                  }
                 </button>
               </div>
             </div>

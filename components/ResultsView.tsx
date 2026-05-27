@@ -186,7 +186,7 @@ export function ResultsView({ results, currency, myParticipantId, sessionUrl, bi
         {/* Share + view bill */}
         <div className="flex gap-2">
           <div className="flex-1">
-            <ShareButton url={sessionUrl} label="Share results via WhatsApp" />
+            <ShareButton url={sessionUrl} label="Share results" text="Check out how we split the bill! 🍽️" />
           </div>
           {billImageUrl && (
             <button
