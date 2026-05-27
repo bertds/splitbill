@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Calculator, Loader2, Users, Trash2 } from 'lucide-react';
+import { Calculator, Loader2, Users, Trash2, UserPlus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { JoinDialog } from './JoinDialog';
@@ -32,7 +32,7 @@ export function SessionClient({ sessionId }: Props) {
 
   const sessionItemIds = useRef<Set<string>>(new Set());
 
-  // Load initial data
+  // Load initial data — never auto-show join dialog; let the user choose
   useEffect(() => {
     const stored = localStorage.getItem(`participant_${sessionId}`);
     setParticipantId(stored);
@@ -48,19 +48,24 @@ export function SessionClient({ sessionId }: Props) {
         setClaims(data.claims);
         if (data.results) setResults(data.results);
         sessionItemIds.current = new Set(data.items.map((i: SessionItem) => i.id));
-        if (!stored) setShowJoin(true);
       })
       .catch(() => setError('Failed to load session'))
       .finally(() => setLoading(false));
   }, [sessionId]);
 
-  // Set up Supabase Realtime
+  // Supabase Realtime
   useEffect(() => {
     const supabase = getSupabaseBrowser();
     const channel = supabase
       .channel(`session:${sessionId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions', filter: `id=eq.${sessionId}` }, (p) => {
         setSession((s) => s ? { ...s, ...p.new } : null);
+        // If just calculated, reload results
+        if ((p.new as Session).status === 'calculated') {
+          fetch(`/api/sessions/${sessionId}`)
+            .then((r) => r.json())
+            .then((data) => { if (data.results) setResults(data.results); });
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'items', filter: `session_id=eq.${sessionId}` }, (p) => {
         if (p.eventType === 'UPDATE') {
@@ -98,10 +103,6 @@ export function SessionClient({ sessionId }: Props) {
     localStorage.setItem(`participant_${sessionId}`, id);
     setParticipantId(id);
     setShowJoin(false);
-    // Refresh participants from server
-    fetch(`/api/sessions/${sessionId}`)
-      .then((r) => r.json())
-      .then((data) => setParticipants(data.participants));
   };
 
   const handleClaimChange = async (itemId: string, claiming: boolean) => {
@@ -117,9 +118,7 @@ export function SessionClient({ sessionId }: Props) {
         setClaims((prev) => prev.some((c) => c.id === claim.id) ? prev : [...prev, claim]);
       }
     } else {
-      await fetch(`/api/sessions/${sessionId}/claims?itemId=${itemId}&participantId=${participantId}`, {
-        method: 'DELETE',
-      });
+      await fetch(`/api/sessions/${sessionId}/claims?itemId=${itemId}&participantId=${participantId}`, { method: 'DELETE' });
       setClaims((prev) => prev.filter((c) => !(c.item_id === itemId && c.participant_id === participantId)));
     }
   };
@@ -161,6 +160,8 @@ export function SessionClient({ sessionId }: Props) {
 
   const sessionUrl = typeof window !== 'undefined' ? window.location.href : '';
   const currency = session?.currency || 'EUR';
+  const isOpen = session?.status === 'open';
+  const hasJoined = !!participantId;
 
   if (loading) {
     return (
@@ -206,9 +207,7 @@ export function SessionClient({ sessionId }: Props) {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {session.status === 'open' && (
-              <ShareButton url={sessionUrl} label="Share" />
-            )}
+            {isOpen && <ShareButton url={sessionUrl} label="Share" />}
             {isCoordinator && (
               <button
                 onClick={handleDelete}
@@ -223,6 +222,7 @@ export function SessionClient({ sessionId }: Props) {
         </div>
       </div>
 
+      {/* Calculated → show results to everyone */}
       {session.status === 'calculated' && results ? (
         <ResultsView
           results={results}
@@ -250,17 +250,17 @@ export function SessionClient({ sessionId }: Props) {
             />
           </div>
 
-          {/* Instructions */}
-          {participantId && (
+          {/* Hint for active participants */}
+          {hasJoined && (
             <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2.5 mb-4">
               <p className="text-xs text-indigo-700">
                 <strong>Tap checkboxes</strong> to claim your items.{' '}
-                <strong>Tap <span className="inline-block">⇄</span></strong> to mark an item as shared by everyone.
+                <strong>Tap ⇄</strong> to mark an item as shared by everyone.
               </p>
             </div>
           )}
 
-          {/* Items */}
+          {/* Items — visible to everyone, interactive only after joining */}
           <div className="mb-6">
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
               Items ({items.length})
@@ -277,19 +277,33 @@ export function SessionClient({ sessionId }: Props) {
             />
           </div>
 
-          {/* Calculate button */}
-          <div className="sticky bottom-4">
-            <button
-              onClick={handleCalculate}
-              disabled={calculating || participants.length === 0}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-semibold text-base shadow-lg transition-colors"
-            >
-              {calculating ? (
-                <><Loader2 className="w-5 h-5 animate-spin" /> Calculating…</>
-              ) : (
-                <><Calculator className="w-5 h-5" /> Calculate Split</>
-              )}
-            </button>
+          {/* Sticky bottom bar */}
+          <div className="sticky bottom-4 flex flex-col gap-2">
+            {/* Guest: prominent join button */}
+            {!hasJoined && (
+              <button
+                onClick={() => setShowJoin(true)}
+                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-semibold text-base shadow-lg transition-colors"
+              >
+                <UserPlus className="w-5 h-5" />
+                Join the split
+              </button>
+            )}
+
+            {/* Participant or coordinator: calculate button */}
+            {hasJoined && (
+              <button
+                onClick={handleCalculate}
+                disabled={calculating || participants.length === 0}
+                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-semibold text-base shadow-lg transition-colors"
+              >
+                {calculating ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Calculating…</>
+                ) : (
+                  <><Calculator className="w-5 h-5" /> Calculate Split</>
+                )}
+              </button>
+            )}
           </div>
         </>
       )}
