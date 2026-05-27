@@ -74,7 +74,23 @@ systemctl reload caddy
 
 App will be at **`https://bill.yourdomain.com`**.
 
-## 5. Updating to a new version
+## 5. Automated session cleanup
+
+Add `CLEANUP_SECRET` to your `.env` file (generate one with `openssl rand -hex 32`),
+then add a cron job on the server to call the cleanup endpoint once a week:
+
+```bash
+crontab -e
+```
+
+Add this line (runs every Sunday at 03:00, deletes sessions older than 6 months):
+```
+0 3 * * 0 curl -sf "https://bill.ccstudios.be/api/cleanup?secret=YOUR_SECRET&months=6" >> /var/log/splitbill-cleanup.log 2>&1
+```
+
+The endpoint returns JSON with how many sessions and images were removed.
+
+## 6. Updating to a new version
 
 ```bash
 git pull

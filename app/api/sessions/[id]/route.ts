@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase-server';
 
+export const runtime = 'nodejs';
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
@@ -25,7 +27,6 @@ export async function GET(
       supabase.from('results').select('*').eq('session_id', params.id),
     ]);
 
-  // Re-hydrate CalculationResult shape from stored rows
   const participantMap = Object.fromEntries((participants ?? []).map((p) => [p.id, p.name]));
   const results =
     session.status === 'calculated' && resultRows?.length
@@ -46,4 +47,37 @@ export async function GET(
     claims: claims ?? [],
     results,
   });
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const supabase = getSupabaseServer();
+
+  // Grab image URL before deleting
+  const { data: session } = await supabase
+    .from('sessions')
+    .select('bill_image_url')
+    .eq('id', params.id)
+    .single();
+
+  // Delete session — CASCADE removes items, participants, claims, results
+  const { error } = await supabase.from('sessions').delete().eq('id', params.id);
+  if (error) {
+    return NextResponse.json({ error: 'Failed to delete session' }, { status: 500 });
+  }
+
+  // Best-effort: remove bill image from Storage
+  if (session?.bill_image_url) {
+    try {
+      const url = new URL(session.bill_image_url);
+      const parts = url.pathname.split('/bill-images/');
+      if (parts[1]) {
+        await supabase.storage.from('bill-images').remove([decodeURIComponent(parts[1])]);
+      }
+    } catch { /* ignore */ }
+  }
+
+  return new NextResponse(null, { status: 204 });
 }

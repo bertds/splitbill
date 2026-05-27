@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Calculator, Loader2, Users } from 'lucide-react';
+import { Calculator, Loader2, Users, Trash2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { JoinDialog } from './JoinDialog';
 import { ItemsList } from './ItemsList';
@@ -24,7 +25,10 @@ export function SessionClient({ sessionId }: Props) {
   const [showJoin, setShowJoin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [isCoordinator, setIsCoordinator] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   const sessionItemIds = useRef<Set<string>>(new Set());
 
@@ -32,6 +36,7 @@ export function SessionClient({ sessionId }: Props) {
   useEffect(() => {
     const stored = localStorage.getItem(`participant_${sessionId}`);
     setParticipantId(stored);
+    setIsCoordinator(!!localStorage.getItem(`coordinator_${sessionId}`));
 
     fetch(`/api/sessions/${sessionId}`)
       .then((r) => r.json())
@@ -145,6 +150,15 @@ export function SessionClient({ sessionId }: Props) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!confirm('Delete this session? This cannot be undone.')) return;
+    setDeleting(true);
+    await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+    localStorage.removeItem(`coordinator_${sessionId}`);
+    localStorage.removeItem(`participant_${sessionId}`);
+    router.push('/');
+  };
+
   const sessionUrl = typeof window !== 'undefined' ? window.location.href : '';
   const currency = session?.currency || 'EUR';
 
@@ -191,9 +205,21 @@ export function SessionClient({ sessionId }: Props) {
               </p>
             )}
           </div>
-          {session.status === 'open' && (
-            <ShareButton url={sessionUrl} label="Share" />
-          )}
+          <div className="flex items-center gap-2">
+            {session.status === 'open' && (
+              <ShareButton url={sessionUrl} label="Share" />
+            )}
+            {isCoordinator && (
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                title="Delete this session"
+                className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl border border-red-200 text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
